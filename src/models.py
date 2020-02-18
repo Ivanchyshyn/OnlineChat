@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import create_engine, String, DateTime
+from sqlalchemy import create_engine, String, DateTime, Sequence
 from sqlalchemy import Column, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -13,7 +13,7 @@ Base = declarative_base()
 class Message(Base):
     __tablename__ = "messages"
 
-    message_id = Column(Integer, primary_key=True)
+    message_id = Column(Integer, Sequence('message_id_seq'), primary_key=True)
     partner_id = Column(Integer)
     order_id = Column(Integer)
     contractor_id = Column(Integer)
@@ -22,8 +22,8 @@ class Message(Base):
     text = Column(String)
     created = Column(DateTime)
 
-    def __init__(self, *args):
-        super().__init__(*args)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.created = datetime.now()
 
     def __repr__(self):
