@@ -1,20 +1,19 @@
 import socketio
+from aiohttp import web
 
 from src.database_utils import query_database
 from src.models import Message
-from src.utils import parse_data, get_filters
+from src.utils import parse_data, get_filters, validate_fields
+
+
+def app_factory(*args):
+    _app = web.Application()
+    sio.attach(_app)
+    return _app
+
 
 sio = socketio.AsyncServer(async_mode='aiohttp', cors_allowed_origins='*')
-
-
-async def background_task():
-    """Example of how to send server generated events to clients."""
-    count = 0
-    while True:
-        await sio.sleep(10)
-        print('Sending task')
-        count += 1
-        await sio.emit('news', {'data': f'Server generated event {count}'})
+app = app_factory()
 
 
 @sio.event
@@ -36,7 +35,7 @@ async def join_room(sid, data):
 
     filters = get_filters(result)
     messages = await query_database(Message, filters)
-    messages = [message.to_json() for message in messages]
+    messages = [await message.to_json() for message in messages]
     print('\nMessages', messages, '\n')
 
     await sio.emit(result.room, {'data': messages}, room=sid)
@@ -67,10 +66,24 @@ async def create_message(sid, data):
     }
     message = await query_database(Message, message_data, method='insert')
     print('\nNEW Message', message, sep='\n')
-    await sio.emit('incoming_' + result.room, {'data': message.to_json()}, room=result.room)
+    await sio.emit('incoming_' + result.room, {'data': await message.to_json()}, room=result.room)
 
 
 @sio.event
-async def hello(sid, data):
-    print(data)
-    await sio.emit('message{}'.format(data['room']), {'data': 'AAA'}, room=data['room'])
+async def edit_message(sid, data):
+    room = data.pop('room', None)
+    if not room or not validate_fields(data, ['message_id', 'text']):
+        return
+    message = await query_database(Message, data, method='update')
+    if message:
+        await sio.emit('edited_' + room, {'data': await message.to_json()}, room=room)
+
+
+@sio.event
+async def delete_message(sid, data):
+    room = data.pop('room', None)
+    if not room or not validate_fields(data, ['message_id']):
+        return
+    message_id = await query_database(Message, data, method='delete')
+    if message_id:
+        await sio.emit('deleted_' + room, {'message_id': message_id}, room=room)
