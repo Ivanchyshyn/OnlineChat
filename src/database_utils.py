@@ -1,5 +1,6 @@
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from functools import partial
 
 from src.models import Session
@@ -13,46 +14,52 @@ async def query_database(model, data, method='select'):
     return result
 
 
+@contextmanager
+def session_scope(**kwargs):
+    session = Session(**kwargs)
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def _query(model, filters):
-    session = Session()
-    result = session.query(model).filter_by(**filters).order_by(model.created).all()
-    session.close()
-    return result
+    with session_scope(expire_on_commit=False) as session:
+        result = session.query(model).filter_by(**filters).order_by(model.created).all()
+        return result
 
 
 def _insert(model, data):
-    session = Session(expire_on_commit=False)
-    message = model(**data)
-    session.add(message)
-    session.commit()
-    session.close()
-    return message
+    with session_scope(expire_on_commit=False) as session:
+        obj = model(**data)
+        session.add(obj)
+        return obj
 
 
 def _update(model, data):
-    session = Session()
-    print('Update DATA', data)
-    message_id = data['message_id']
-    row_count = session.query(model).filter_by(message_id=message_id).update({model.text: data['text']})
-    print('ROW COUNT', row_count)
-    session.commit()
-    if not row_count:
-        return
+    with session_scope() as session:
+        print('Update DATA', data)
+        message_id = data['message_id']
+        row_count = session.query(model).filter_by(message_id=message_id).update({model.text: data['text']})
+        print('ROW COUNT', row_count)
+        session.commit()
 
-    message = session.query(model).get(message_id)
-    print('MESSAGE', message)
-    session.close()
-    return message
+        obj = session.query(model).get(message_id)
+        print('MESSAGE', obj)
+        session.close()
+        return obj
 
 
 def _delete(model, data):
-    session = Session()
     print('Remove Data', data)
     message_id = data['message_id']
-    obj = session.query(model).get(message_id)
-    session.delete(obj)
-    session.commit()
-    session.close()
+    with session_scope() as session:
+        obj = session.query(model).get(message_id)
+        session.delete(obj)
     return message_id
 
 

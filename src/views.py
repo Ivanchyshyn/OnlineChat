@@ -34,6 +34,7 @@ async def join_room(sid, data):
     sio.enter_room(sid, result.room)
 
     filters = get_filters(result)
+    # TODO add pagination for messages (For example 15 messages per page)
     messages = await query_database(Message, filters)
     messages = [await message.to_json() for message in messages]
     print('\nMessages', messages, '\n')
@@ -47,7 +48,7 @@ async def leave_room(sid, data):
 
 
 @sio.event
-async def leave_all_rooms(sid, *data):
+async def leave_all_rooms(sid, *data, ):
     print('LEAVE ALL ROOMS', sio.rooms(sid), sid)
     for room in sio.rooms(sid):
         if room != sid:

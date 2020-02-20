@@ -1,8 +1,9 @@
 from collections import namedtuple
 
+ParseResult = namedtuple('ParseResult', 'order user partner contractor room')
+
 
 def parse_data(data) -> namedtuple:
-    Result = namedtuple('Result', 'order user partner contractor room')
     order_id = data['id']
     user_id = data['userId']
     contractor_id = data.get('contractorId') or user_id
@@ -10,7 +11,7 @@ def parse_data(data) -> namedtuple:
 
     if not order_id or not contractor_id:
         raise ValueError('Bad request')
-    return Result(order_id, user_id, partner_id, contractor_id, f"{order_id}_{contractor_id}")
+    return ParseResult(order_id, user_id, partner_id, contractor_id, f"{order_id}_{contractor_id}")
 
 
 def get_filters(result):
