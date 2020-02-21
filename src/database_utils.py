@@ -14,6 +14,15 @@ async def query_database(model, data, method='select'):
     return result
 
 
+def paginate(query, page, page_size):
+    if page <= 0:
+        raise AttributeError('page needs to be >= 1')
+    if page_size <= 0:
+        raise AttributeError('page_size needs to be >= 1')
+    items = query.limit(page_size).offset((page - 1) * page_size).all()
+    return items
+
+
 @contextmanager
 def session_scope(**kwargs):
     session = Session(**kwargs)
@@ -27,10 +36,21 @@ def session_scope(**kwargs):
         session.close()
 
 
-def _query(model, filters):
+def _select(model, data):
+    page = data.pop('page', None)
+    page_size = data.pop('page_size', 10)
     with session_scope(expire_on_commit=False) as session:
-        result = session.query(model).filter_by(**filters).order_by(model.created).all()
-        return result
+        query = session.query(model).filter_by(**data)
+        total = query.order_by(None).count()
+        if page:
+            print('PAGINATING', page, page_size)
+            result = reversed(
+                paginate(query.order_by(model.created.desc()), page, page_size)
+            )
+        else:
+            print('NOT PAGINATING')
+            result = query.order_by(model.created).all()
+        return result, total
 
 
 def _insert(model, data):
@@ -64,7 +84,7 @@ def _delete(model, data):
 
 
 QUERY_TYPE = {
-    'select': _query,
+    'select': _select,
     'insert': _insert,
     'update': _update,
     'delete': _delete,

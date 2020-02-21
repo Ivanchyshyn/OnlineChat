@@ -1,19 +1,22 @@
 import socketio
 from aiohttp import web
 
-from src.database_utils import query_database
-from src.models import Message
-from src.utils import parse_data, get_filters, validate_fields
-
-
-def app_factory(*args):
-    _app = web.Application()
-    sio.attach(_app)
-    return _app
-
+from .app_engines import pg_engine, redis_engine
+from .database_utils import query_database
+from .models import Message
+from .queries_to_prod import DatabaseQuery
+from .utils import parse_data, get_filters, validate_fields
 
 sio = socketio.AsyncServer(async_mode='aiohttp', cors_allowed_origins='*')
-app = app_factory()
+
+
+async def app_factory(*args):
+    app = web.Application()
+    sio.attach(app)
+    sio.__myapp = app
+    app.cleanup_ctx.append(pg_engine)
+    app.cleanup_ctx.append(redis_engine)
+    return app
 
 
 @sio.event
@@ -29,17 +32,18 @@ async def disconnect(sid):
 
 @sio.event
 async def join_room(sid, data):
-    print('join room', data)
+    print('\njoin room', data)
     result = parse_data(data)
     sio.enter_room(sid, result.room)
 
     filters = get_filters(result)
-    # TODO add pagination for messages (For example 15 messages per page)
-    messages = await query_database(Message, filters)
-    messages = [await message.to_json() for message in messages]
-    print('\nMessages', messages, '\n')
+    filters.update({'page': result.page, 'page_size': result.page_size})
+    messages, total = await query_database(Message, filters)
+    database = DatabaseQuery(sio.__myapp)
+    messages = [await message.to_json(database) for message in messages]
+    print(f'\nTotal - {total}\nMessages - {messages}\n')
 
-    await sio.emit(result.room, {'data': messages}, room=sid)
+    await sio.emit(result.room, {'data': messages, 'total': total}, room=sid)
 
 
 @sio.event
@@ -66,8 +70,9 @@ async def create_message(sid, data):
         'text': data['text'],
     }
     message = await query_database(Message, message_data, method='insert')
+    database = DatabaseQuery(sio.__myapp)
     print('\nNEW Message', message, sep='\n')
-    await sio.emit('incoming_' + result.room, {'data': await message.to_json()}, room=result.room)
+    await sio.emit('incoming_' + result.room, {'data': await message.to_json(database)}, room=result.room)
 
 
 @sio.event
@@ -77,7 +82,8 @@ async def edit_message(sid, data):
         return
     message = await query_database(Message, data, method='update')
     if message:
-        await sio.emit('edited_' + room, {'data': await message.to_json()}, room=room)
+        database = DatabaseQuery(sio.__myapp)
+        await sio.emit('edited_' + room, {'data': await message.to_json(database)}, room=room)
 
 
 @sio.event

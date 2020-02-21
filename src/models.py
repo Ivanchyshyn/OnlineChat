@@ -5,7 +5,6 @@ from sqlalchemy import Column, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from .queries_to_prod import get_user_information
 from .settings import DATABASE_URL
 
 Base = declarative_base()
@@ -32,8 +31,8 @@ class Message(Base):
             self.message_id, self.order_id, self.partner_id, self.contractor_id,
         )
 
-    async def to_json(self):
-        user = await get_user_information(self.sender_id)
+    async def to_json(self, database):
+        user = await database.get_user_information(self.sender_id)
         return {
             'message_id': self.message_id,
             'sender_id': self.sender_id,

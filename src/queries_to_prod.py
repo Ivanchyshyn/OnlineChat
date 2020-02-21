@@ -1,30 +1,40 @@
 import json
-from collections import namedtuple
 
-User = namedtuple('User', 'full_name avatar')
+from .utils import NamedUser
 
 
-async def get_user_information(user_id):
-    from .views import app
-    redis = app['redis']
-    user_key = f'user_{user_id}'
-    user = await redis.get(user_key, encoding='UTF-8')
-    if user:
-        user = json.loads(user)
-        print('User from Redis', user)
-        return User(user['full_name'], user['avatar'])
+class DatabaseQuery:
+    """Class that works with databases connections"""
 
-    async with app['pg_engine'].acquire() as con:
-        result = await con.execute(
-            'SELECT first_name, last_name, avatar FROM users_customuser WHERE id=%s', (user_id,)
-        )
-        result = await result.first()
-        print('Result', result)
-        if result:
-            first_name, last_name, avatar = result.as_tuple()
-            full_name = '{} {}'.format(first_name or '', last_name or '').strip()
-            print('Set user to Redis', full_name, avatar)
-            user_data = json.dumps({'full_name': full_name, 'avatar': avatar})
-            await redis.set(user_key, user_data, expire=60 * 60 * 24)
-            return User(full_name, avatar)
-        return User('', None)
+    def __init__(self, app):
+        """
+        :param app: Current running web app
+        :type app: aiohttp.web.Application
+        """
+        self.app = app
+
+    async def get_user_information(self, user_id) -> NamedUser:
+        redis = self.app['redis']
+        user = await redis.get(f'user_{user_id}', encoding='UTF-8')
+        if user:
+            user = json.loads(user)
+            print('User from Redis', user)
+            return NamedUser(user['full_name'], user['avatar'])
+
+        return await self.get_user_from_prod(user_id)
+
+    async def get_user_from_prod(self, user_id):
+        async with self.app['pg_engine'].acquire() as con:
+            result = await con.execute(
+                'SELECT first_name, last_name, avatar FROM users_customuser WHERE id=%s', (user_id,)
+            )
+            result = await result.first()
+            print('Result', result)
+            if result:
+                first_name, last_name, avatar = result.as_tuple()
+                full_name = '{} {}'.format(first_name or '', last_name or '').strip()
+                print('Set user to Redis', full_name, avatar)
+                user_data = json.dumps({'full_name': full_name, 'avatar': avatar})
+                await self.app['redis'].set(f'user_{user_id}', user_data, expire=60 * 60 * 24)
+                return NamedUser(full_name, avatar)
+            return NamedUser('', None)

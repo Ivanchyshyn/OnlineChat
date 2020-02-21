@@ -12,6 +12,7 @@ PROD_PG_HOST = os.getenv("PROD_DATABASE_HOST", 'localhost')
 PROD_PG_PORT = os.getenv("PROD_DATABASE_PORT", '5432')
 PROD_PG_NAME = os.getenv("PROD_DATABASE_NAME", 'market_dev')
 
+# Redis for caching
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = os.getenv('REDIS_PORT', '6379')
 REDIS_CACHE_URL = f'redis://{REDIS_HOST}:{REDIS_PORT}/'
